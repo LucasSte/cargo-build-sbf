@@ -548,7 +548,7 @@ pub fn rust_target_triple(config: &Config) -> String {
     } else if arch == "v0" {
         "sbpf-solana-solana".to_string()
     } else {
-        format!("sbpf{}-solana-solana", arch)
+        format!("sbpf{arch}-solana-solana")
     }
 }
 
