@@ -277,7 +277,7 @@ fn build_solana(config: Config, manifest_path: Option<PathBuf>) {
 }
 
 fn main() {
-    agave_logger::setup();
+    agave_logger::setup_with_default("warn");
     let mut args = env::args().collect::<Vec<_>>();
     // When run as a cargo subcommand, the first program argument is the subcommand name.
     // Remove it
@@ -455,7 +455,6 @@ fn main() {
             Arg::new("arch")
                 .long("arch")
                 .possible_values(["v0", "v1", "v2", "v3", "v4"])
-                .default_value("v0")
                 .help("Build for the given target architecture"),
         )
         .arg(
@@ -561,7 +560,7 @@ fn main() {
         quiet: matches.is_present("quiet"),
         workspace: matches.is_present("workspace"),
         jobs: matches.value_of_t("jobs").ok(),
-        arch: matches.value_of("arch").unwrap(),
+        arch: matches.value_of("arch"),
         optimize_size: matches.is_present("optimize_size"),
         lto: matches.is_present("lto"),
         install_only: matches.is_present("install_only"),
@@ -572,7 +571,7 @@ fn main() {
         use_abi_v2: matches.is_present("abi_v2"),
     };
 
-    if config.use_abi_v2 && config.arch != "v3" {
+    if config.use_abi_v2 && config.arch.unwrap_or("v0") != "v3" {
         error!("--abi-v2 requires --arch v3");
         return;
     }

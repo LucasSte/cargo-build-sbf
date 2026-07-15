@@ -531,13 +531,24 @@ pub fn rust_target_triple(config: &Config) -> String {
     ))
     .unwrap();
     let sbpf_minimum_version = semver::Version::parse(&semver_version("v1.44")).unwrap();
+    let sbpfv3_minimum = semver::Version::parse(&semver_version("v1.53")).unwrap();
 
-    if config.arch == "v0" && tools_version < sbpf_minimum_version {
+    let arch = config.arch.unwrap_or("v0");
+    let is_forced = config.arch.is_some();
+    if arch == "v0" && tools_version < sbpf_minimum_version {
         "sbf-solana-solana".to_string()
-    } else if config.arch == "v0" {
+    } else if arch != "v3" && arch != "v4" && tools_version >= sbpfv3_minimum && !is_forced {
+        warn!(
+            "SBPF{arch} is deprecated, and new deployments will be blocked on all clusters \
+             starting on Agave v4.2. We automatically switched your target to SBPFv3 to maintain \
+             compatibility. If you still want to build your program for SBPF{arch}, run \
+             `cargo-build-sbf --arch {arch}`"
+        );
+        "sbpfv3-solana-solana".to_string()
+    } else if arch == "v0" {
         "sbpf-solana-solana".to_string()
     } else {
-        format!("sbpf{}-solana-solana", config.arch)
+        format!("sbpf{}-solana-solana", arch)
     }
 }
 
