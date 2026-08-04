@@ -10,14 +10,18 @@ use {
     std::{
         collections::HashMap,
         fs::{self, File, OpenOptions},
-        io::{BufRead, BufReader, BufWriter, Seek, SeekFrom, Write},
+        io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
         path::{Path, PathBuf},
         process::exit,
         str::FromStr,
     },
 };
 
-fn file_older_or_missing(prerequisite_file: &Path, target_file: &Path) -> bool {
+fn file_older_or_missing(
+    prerequisite_file: &Path,
+    target_file: &Path,
+    request_version: &str,
+) -> bool {
     let prerequisite_metadata = fs::metadata(prerequisite_file).unwrap_or_else(|err| {
         error!(
             "Unable to get file metadata for {}: {}",
@@ -26,6 +30,39 @@ fn file_older_or_missing(prerequisite_file: &Path, target_file: &Path) -> bool {
         );
         exit(1);
     });
+
+    let file = OpenOptions::new()
+        .read(true)
+        .create(false)
+        .open(target_file);
+
+    let sbpf_version = file.ok().and_then(|mut file| {
+        let mut buf: [u8; 4] = [0u8; 4];
+        let Ok(_) = file.read(&mut buf) else {
+            return None;
+        };
+
+        if buf == [0x7f, b'E', b'L', b'F'] {
+            let Ok(_) = file.seek(SeekFrom::Start(48)) else {
+                return None;
+            };
+
+            let Ok(_) = file.read(&mut buf) else {
+                return None;
+            };
+
+            Some(u32::from_le_bytes(buf))
+        } else {
+            None
+        }
+    });
+
+    // If the requested version is not the one we've saved, we must re-generated it.
+    if let Some(sbpf_version) = sbpf_version {
+        if format!("v{sbpf_version}") != request_version {
+            return true;
+        }
+    }
 
     if let Ok(target_metadata) = fs::metadata(target_file) {
         use std::time::UNIX_EPOCH;
@@ -88,7 +125,7 @@ fn generate_debug_objects(
     let program_debug = sbf_debug_dir.join(format!("{program_name}.so.debug"));
     let program_debug_stripped = sbf_debug_dir.join(finalized_program);
 
-    if file_older_or_missing(program_unstripped_so, &program_debug_stripped) {
+    if file_older_or_missing(program_unstripped_so, &program_debug_stripped, config.arch) {
         strip_object(
             config,
             program_unstripped_so,
@@ -97,7 +134,7 @@ fn generate_debug_objects(
         );
     }
 
-    if file_older_or_missing(program_unstripped_so, &program_debug) {
+    if file_older_or_missing(program_unstripped_so, &program_debug, config.arch) {
         copy_file(program_unstripped_so, &program_debug);
     }
 
@@ -123,7 +160,7 @@ fn generate_release_objects(
 ) -> PathBuf {
     let program_so = sbf_out_dir.join(format!("{program_name}.so"));
 
-    if file_older_or_missing(program_unstripped_so, &program_so) {
+    if file_older_or_missing(program_unstripped_so, &program_so, config.arch) {
         strip_object(config, program_unstripped_so, &program_so, llvm_bin);
     }
 
@@ -199,7 +236,7 @@ pub fn post_process(
             )
         };
 
-        if config.dump && file_older_or_missing(&program_unstripped_so, &program_dump) {
+        if config.dump {
             let mangled_name = format!("{}.mangled", program_dump.display());
             {
                 let mangled =
@@ -233,17 +270,19 @@ pub fn post_process(
                 }
             }
 
-            let dump = File::create(&program_dump).expect("failed to open dump file");
-            let mut dump_out = BufWriter::new(dump);
-            let output = spawn(
-                Path::new("rustfilt"),
-                ["--input", mangled_name.as_str()],
-                config.generate_child_script_on_failure,
-            );
-            write!(dump_out, "{output}").expect("write output of rustfilt");
-            std::fs::remove_file(mangled_name).expect("mangled file to be removed");
+            {
+                let dump = File::create(&program_dump).expect("failed to open dump file");
+                let mut dump_out = BufWriter::new(dump);
+                let output = spawn(
+                    Path::new("rustfilt"),
+                    ["--input", mangled_name.as_str()],
+                    config.generate_child_script_on_failure,
+                );
+                write!(dump_out, "{output}").expect("write output of rustfilt");
+                std::fs::remove_file(mangled_name).expect("mangled file to be removed");
+                info!("Wrote {}", program_dump.display());
+            }
 
-            info!("Wrote {}", program_dump.display());
             postprocess_dump(&program_dump);
         }
 
