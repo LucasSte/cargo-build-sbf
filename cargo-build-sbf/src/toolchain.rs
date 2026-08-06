@@ -78,7 +78,7 @@ fn downloadable_version(version: &str) -> String {
     }
 }
 
-fn semver_version(version: &str) -> String {
+pub fn semver_version(version: &str) -> String {
     let starts_with_v = version.starts_with('v');
     let dots = version.as_bytes().iter().fold(
         0,
@@ -315,12 +315,13 @@ pub(crate) fn install_if_missing(
             .map_err(|err| format!("could not unpack downloaded archive: {err}"))?;
         fs::remove_file(download_file_path)
             .map_err(|err| format!("could not remove downloaded archive: {err}"))?;
-        if should_nix_patch_bins_and_dylibs(config)
-            && let Err(e) = nix_patch_all_bins_and_dylibs(target_path)
-        {
-            error!(
-                "patching for nix failed ({e};) will continue, but tools might not work out-of-box"
-            )
+        if should_nix_patch_bins_and_dylibs(config) {
+            if let Err(e) = nix_patch_all_bins_and_dylibs(target_path) {
+                error!(
+                    "patching for nix failed ({e};) will continue, but tools might not work \
+                     out-of-box"
+                )
+            }
         }
     }
     Ok(())
@@ -531,24 +532,13 @@ pub fn rust_target_triple(config: &Config) -> String {
     ))
     .unwrap();
     let sbpf_minimum_version = semver::Version::parse(&semver_version("v1.44")).unwrap();
-    let sbpfv3_minimum = semver::Version::parse(&semver_version("v1.53")).unwrap();
 
-    let arch = config.arch.unwrap_or("v0");
-    let is_forced = config.arch.is_some();
-    if arch == "v0" && tools_version < sbpf_minimum_version {
+    if config.arch == "v0" && tools_version < sbpf_minimum_version {
         "sbf-solana-solana".to_string()
-    } else if arch != "v3" && arch != "v4" && tools_version >= sbpfv3_minimum && !is_forced {
-        warn!(
-            "SBPF{arch} is deprecated, and new deployments will be blocked on all clusters \
-             starting on Agave v4.2. We automatically switched your target to SBPFv3 to maintain \
-             compatibility. If you still want to build your program for SBPF{arch}, run \
-             `cargo-build-sbf --arch {arch}`"
-        );
-        "sbpfv3-solana-solana".to_string()
-    } else if arch == "v0" {
+    } else if config.arch == "v0" {
         "sbpf-solana-solana".to_string()
     } else {
-        format!("sbpf{arch}-solana-solana")
+        format!("sbpf{}-solana-solana", config.arch)
     }
 }
 

@@ -5,7 +5,7 @@ use {
         toolchain::{
             DEFAULT_PLATFORM_TOOLS_VERSION, corrupted_toolchain, generate_toolchain_name,
             get_base_rust_version, install_and_link_tools, install_tools,
-            make_platform_tools_path_for_version, rust_target_triple,
+            make_platform_tools_path_for_version, rust_target_triple, semver_version,
             validate_platform_tools_version,
         },
         utils::{is_version_string, spawn},
@@ -455,6 +455,7 @@ fn main() {
             Arg::new("arch")
                 .long("arch")
                 .possible_values(["v0", "v1", "v2", "v3", "v4"])
+                .default_value("v3")
                 .help("Build for the given target architecture"),
         )
         .arg(
@@ -560,7 +561,7 @@ fn main() {
         quiet: matches.is_present("quiet"),
         workspace: matches.is_present("workspace"),
         jobs: matches.value_of_t("jobs").ok(),
-        arch: matches.value_of("arch"),
+        arch: matches.value_of("arch").unwrap(),
         optimize_size: matches.is_present("optimize_size"),
         lto: matches.is_present("lto"),
         install_only: matches.is_present("install_only"),
@@ -571,8 +572,25 @@ fn main() {
         use_abi_v2: matches.is_present("abi_v2"),
     };
 
-    if config.use_abi_v2 && config.arch.unwrap_or("v0") != "v3" {
+    if config.use_abi_v2 && config.arch != "v3" {
         error!("--abi-v2 requires --arch v3");
+        return;
+    }
+
+    let tools_version = config
+        .platform_tools_version
+        .unwrap_or(DEFAULT_PLATFORM_TOOLS_VERSION);
+
+    let minimum_version = semver::Version::parse(&semver_version("v1.53")).unwrap();
+    let is_valid_version = semver::Version::parse(&semver_version(tools_version))
+        .ok()
+        .map(|version| version >= minimum_version || version.patch > 0);
+
+    if (config.arch == "v3" || config.arch == "v4")
+        && is_valid_version.is_some()
+        && !is_valid_version.unwrap()
+    {
+        error!("Platform tools {tools_version} is incompatible with SBPFv3",);
         return;
     }
 
@@ -583,12 +601,8 @@ fn main() {
     }
 
     if config.install_only {
-        let platform_tools_version = validate_platform_tools_version(
-            config
-                .platform_tools_version
-                .unwrap_or(DEFAULT_PLATFORM_TOOLS_VERSION),
-            DEFAULT_PLATFORM_TOOLS_VERSION,
-        );
+        let platform_tools_version =
+            validate_platform_tools_version(tools_version, DEFAULT_PLATFORM_TOOLS_VERSION);
         install_tools(&config, &platform_tools_version, true);
         return;
     }
