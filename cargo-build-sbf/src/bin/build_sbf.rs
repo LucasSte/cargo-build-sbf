@@ -590,7 +590,10 @@ fn main() {
         && is_valid_version.is_some()
         && !is_valid_version.unwrap()
     {
-        error!("Platform tools {tools_version} is incompatible with SBPFv3",);
+        error!("Platform tools {tools_version} is incompatible with SBPFv3 \
+        Refer to https://github.com/anza-xyz/cargo-build-sbf#sbfpv3-migration for more \
+        information. Use `cargo-build-sbf --arch v0` if you wish to use this platform tools \
+        version.");
         return;
     }
 
