@@ -277,7 +277,7 @@ fn build_solana(config: Config, manifest_path: Option<PathBuf>) {
 }
 
 fn main() {
-    agave_logger::setup();
+    agave_logger::setup_with_default("warn");
     let mut args = env::args().collect::<Vec<_>>();
     // When run as a cargo subcommand, the first program argument is the subcommand name.
     // Remove it
@@ -455,7 +455,7 @@ fn main() {
             Arg::new("arch")
                 .long("arch")
                 .possible_values(["v0", "v1", "v2", "v3", "v4"])
-                .default_value("v0")
+                .default_value("v3")
                 .help("Build for the given target architecture"),
         )
         .arg(
@@ -574,7 +574,7 @@ fn main() {
 
     if config.use_abi_v2 && config.arch != "v3" {
         error!("--abi-v2 requires --arch v3");
-        return;
+        exit(1);
     }
 
     let manifest_path: Option<PathBuf> = matches.value_of_t("manifest_path").ok();
@@ -583,13 +583,13 @@ fn main() {
         debug!("manifest_path: {manifest_path:?}");
     }
 
+    let tools_version = config
+        .platform_tools_version
+        .unwrap_or(DEFAULT_PLATFORM_TOOLS_VERSION);
+
     if config.install_only {
-        let platform_tools_version = validate_platform_tools_version(
-            config
-                .platform_tools_version
-                .unwrap_or(DEFAULT_PLATFORM_TOOLS_VERSION),
-            DEFAULT_PLATFORM_TOOLS_VERSION,
-        );
+        let platform_tools_version =
+            validate_platform_tools_version(tools_version, DEFAULT_PLATFORM_TOOLS_VERSION);
         install_tools(&config, &platform_tools_version, true);
         return;
     }
